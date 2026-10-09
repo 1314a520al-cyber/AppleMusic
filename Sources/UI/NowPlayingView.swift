@@ -239,7 +239,7 @@ struct NowPlayingView: View {
                         await MainActor.run {
                             switch result {
                             case .success: ToastCenter.shared.success("已下载")
-                            case .failure(let message): ToastCenter.shared.error(message)
+                            case .failure(let error): ToastCenter.shared.error(error.localizedDescription)
                             }
                         }
                     }

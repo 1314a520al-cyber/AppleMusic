@@ -17,6 +17,10 @@ struct CacheCategory: Identifiable {
     let color: Color
 }
 
+/// 缓存统计与清理。
+/// 整体标记 @MainActor：清理动作会触碰 UI 相关缓存（内存图片缓存），
+/// 且调用点都在界面中，这样既安全又不会产生并发告警。
+@MainActor
 enum CacheManager {
 
     static func categories() -> [CacheCategory] {
@@ -48,7 +52,7 @@ enum CacheManager {
         URLCache.shared.removeAllCachedResponses()
         ImageMemoryCache.shared.removeAll()
         ImageDiskCache.removeAll()
-        PlayerManager.clearURLCache()
+        PlaybackURLCache.clear()
 
         let fm = FileManager.default
         if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
@@ -62,7 +66,7 @@ enum CacheManager {
         switch name {
         case "网络缓存":
             URLCache.shared.removeAllCachedResponses()
-            PlayerManager.clearURLCache()
+            PlaybackURLCache.clear()
         case "封面缓存":
             ImageMemoryCache.shared.removeAll()
             ImageDiskCache.removeAll()

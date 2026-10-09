@@ -37,44 +37,20 @@ struct MineView: View {
 
                         // 音乐设置组
                         VStack(spacing: 0) {
-                            var needsDivider = false
-
-                            if settings.showSourceEntry {
-                                if needsDivider { InsetDivider(leading: 60) }
-                                Button { Haptics.tap(); showSourceManager = true } label: {
-                                    settingRow(icon: "antenna.radiowaves.left.and.right", tint: .blue,
-                                               title: "音源管理", detail: "\(sourceStore.sources.count) 个")
+                            ForEach(Array(settingsRows.enumerated()), id: \.offset) { index, row in
+                                Button {
+                                    Haptics.tap()
+                                    row.action()
+                                } label: {
+                                    settingRow(icon: row.icon, tint: row.tint,
+                                               title: row.title, detail: row.detail)
                                 }
                                 .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
-                                needsDivider = true
-                            }
 
-                            if settings.showCacheEntry {
-                                if needsDivider { InsetDivider(leading: 60) }
-                                Button { Haptics.tap(); showCacheManager = true } label: {
-                                    settingRow(icon: "trash.fill", tint: .orange,
-                                               title: "清除缓存", detail: cacheSizeText)
+                                if index < settingsRows.count - 1 {
+                                    InsetDivider(leading: 60)
                                 }
-                                .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
-                                needsDivider = true
                             }
-
-                            if settings.showQualityEntry {
-                                if needsDivider { InsetDivider(leading: 60) }
-                                Button { Haptics.tap(); showQualityPicker = true } label: {
-                                    settingRow(icon: "waveform", tint: .purple,
-                                               title: "音质", detail: qualitySelection.displayName)
-                                }
-                                .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
-                                needsDivider = true
-                            }
-
-                            if needsDivider { InsetDivider(leading: 60) }
-                            Button { Haptics.tap(); showSettings = true } label: {
-                                settingRow(icon: "gearshape.fill", tint: .gray,
-                                           title: "设置", detail: nil)
-                            }
-                            .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
                         }
                         .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)) }
                         .padding(.horizontal, 16)
@@ -172,6 +148,52 @@ struct MineView: View {
 
     private var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    /// 设置行模型：把「是否显示 / 图标 / 文案 / 动作」集中成数据，
+    /// 避免在 ViewBuilder 里写命令式语句（SwiftUI 不允许）。
+    private struct SettingsRow {
+        let icon: String
+        let tint: Color
+        let title: String
+        let detail: String?
+        let action: () -> Void
+    }
+
+    private var settingsRows: [SettingsRow] {
+        var rows: [SettingsRow] = []
+
+        if settings.showSourceEntry {
+            rows.append(SettingsRow(
+                icon: "antenna.radiowaves.left.and.right", tint: .blue,
+                title: "音源管理", detail: "\(sourceStore.sources.count) 个",
+                action: { showSourceManager = true }
+            ))
+        }
+
+        if settings.showCacheEntry {
+            rows.append(SettingsRow(
+                icon: "trash.fill", tint: .orange,
+                title: "清除缓存", detail: cacheSizeText,
+                action: { showCacheManager = true }
+            ))
+        }
+
+        if settings.showQualityEntry {
+            rows.append(SettingsRow(
+                icon: "waveform", tint: .purple,
+                title: "音质", detail: qualitySelection.displayName,
+                action: { showQualityPicker = true }
+            ))
+        }
+
+        rows.append(SettingsRow(
+            icon: "gearshape.fill", tint: .gray,
+            title: "设置", detail: nil,
+            action: { showSettings = true }
+        ))
+
+        return rows
     }
 
     private func settingRow(icon: String, tint: Color, title: String, detail: String?) -> some View {

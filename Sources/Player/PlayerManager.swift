@@ -79,7 +79,6 @@ final class PlayerManager: NSObject, ObservableObject {
     private var pendingSeekTarget: Double?
     private var lastAutoAdvance = Date(timeIntervalSince1970: 0)
 
-    private static var urlCache: [String: URL] = [:]
 
     private override init() {
         super.init()
@@ -251,7 +250,7 @@ final class PlayerManager: NSObject, ObservableObject {
         Task { [weak self] in
             guard let self else { return }
 
-            if let cached = Self.urlCache[song.identityKey] {
+            if let cached = PlaybackURLCache.url(for: song.identityKey) {
                 await MainActor.run {
                     guard generation == self.loadGeneration else { return }
                     self.startPlayback(url: cached, song: song)
@@ -285,7 +284,7 @@ final class PlayerManager: NSObject, ObservableObject {
                     BeansLogger.shared.log("✗ 播放失败（无可用地址）：\(song.name)", level: .error)
                     return
                 }
-                Self.urlCache[song.identityKey] = resolved
+                PlaybackURLCache.store(resolved, for: song.identityKey)
                 self.startPlayback(url: resolved, song: song, sourceNote: sourceNote)
             }
         }
@@ -579,6 +578,31 @@ final class PlayerManager: NSObject, ObservableObject {
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
+}
 
-    static func clearURLCache() { urlCache.removeAll() }
+// MARK: - 播放地址缓存
+//
+// 单独抽成 enum（不参与 @MainActor 隔离），这样缓存清理可以从任意上下文调用，
+// 不会触发 actor 隔离告警。内部用 NSLock 保证线程安全。
+enum PlaybackURLCache {
+    private static let lock = NSLock()
+    private static var storage: [String: URL] = [:]
+
+    static func url(for key: String) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage[key]
+    }
+
+    static func store(_ url: URL, for key: String) {
+        lock.lock()
+        storage[key] = url
+        lock.unlock()
+    }
+
+    static func clear() {
+        lock.lock()
+        storage.removeAll()
+        lock.unlock()
+    }
 }
