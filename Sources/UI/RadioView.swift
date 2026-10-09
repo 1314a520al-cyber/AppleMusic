@@ -22,7 +22,7 @@ struct RadioView: View {
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                AmbienceBackdrop(tint: .purple)
+                BackdropLayer()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {

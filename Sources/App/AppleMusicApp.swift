@@ -20,6 +20,7 @@ struct AppleMusicApp: App {
             "appleMusic.hapticEnabled": true,
             "appleMusic.audioQuality": AudioQuality.exhigh.rawValue
         ])
+        configureURLCache()
         configureNavigationAppearance()
         Haptics.prepare()
     }
@@ -39,10 +40,30 @@ struct AppleMusicApp: App {
                 .onReceive(
                     NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
                 ) { _ in
+                    // 内存警告：只清内存图片，磁盘缓存保留（下次仍秒开）
                     ImageLoader.shared.flushMemory()
-                    URLCache.shared.removeAllCachedResponses()
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+                ) { _ in
+                    // 回到前台时检查缓存是否超限，超了就自动瘦身
+                    Task { @MainActor in
+                        CacheManager.enforceLimits()
+                    }
                 }
         }
+    }
+
+    /// 显式限制 URLCache 容量。
+    /// 系统默认的磁盘缓存上限极大，音频流分片会把磁盘吃满（这是缓存暴涨的元凶之一）。
+    private func configureURLCache() {
+        let memoryCapacity = 16 * 1024 * 1024      // 16MB 内存
+        let diskCapacity = 48 * 1024 * 1024        // 48MB 磁盘
+        URLCache.shared = URLCache(
+            memoryCapacity: memoryCapacity,
+            diskCapacity: diskCapacity,
+            diskPath: "AppleMusicURLCache"
+        )
     }
 
     private func configureNavigationAppearance() {

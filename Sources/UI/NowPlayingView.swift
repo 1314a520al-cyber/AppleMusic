@@ -2,7 +2,18 @@
 //  NowPlayingView.swift
 //  AppleMusic
 //
-//  全屏播放页（苹果音乐样式）。
+//  全屏播放页。
+//
+//  结构（与参考图一致）：
+//    顶部迷你条（封面 + 歌名/歌手 + 星标 + 更多）
+//    待播清单（来自 xxx）+ 右侧 随机/循环/无限
+//    歌曲列表（序号/封面/歌名歌手/三横线）
+//    进度条 + 时间
+//    上一首 / 播放暂停 / 下一首
+//    音量条
+//    底部：歌词 / 电台 / 队列
+//
+//  各区块显示与否由设置控制。
 //
 
 import SwiftUI
@@ -21,21 +32,56 @@ struct NowPlayingView: View {
     @State private var showQueue = false
     @State private var isScrubbing = false
     @State private var scrubValue: Double = 0
-    @State private var showVolume = false
 
     private var song: Song? { player.currentSong }
 
     var body: some View {
-        GeometryReader { geo in
-            let artworkSize = min(geo.size.width - 64, 340)
-            ZStack {
-                backgroundLayer
-                contentLayer(artworkSize: artworkSize)
+        ZStack {
+            BackdropLayer()
+
+            VStack(spacing: 0) {
+
+                // 顶部迷你条
+                topMiniBar
+
+                // 待播清单头部 + 模式按钮
+                queueHeader
+
+                // 歌曲列表
+                queueList
+
+                Spacer(minLength: 8)
+
+                // 进度条
+                progressBar
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 10)
+
+                // 播放控制
+                playbackControls
+                    .padding(.horizontal, 28)
+
+                // 音量条
+                if settings.showNowPlayingVolume {
+                    SystemVolumeSlider()
+                        .frame(height: 34)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 6)
+                }
+
+                // 底部工具条
+                if settings.showNowPlayingBottomBar {
+                    bottomBar
+                        .padding(.horizontal, 28)
+                        .padding(.top, 8)
+                }
+
+                Spacer(minLength: 10)
             }
             .offset(y: dragOffset)
             .gesture(dismissGesture)
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container, edges: .bottom)
         .sheet(isPresented: $showLyrics) {
             LyricsSheet().environmentObject(player).environmentObject(clock)
         }
@@ -44,95 +90,144 @@ struct NowPlayingView: View {
         }
     }
 
-    private var backgroundLayer: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
-            if let url = song?.coverURL {
-                CachedAsyncImage(url: url) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                        .blur(radius: 60).opacity(0.35)
-                } placeholder: { Color.clear }
-                .ignoresSafeArea()
+    // MARK: - 顶部迷你条
+
+    private var topMiniBar: some View {
+        HStack(spacing: 10) {
+            Button { Haptics.tap(); dismissView() } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36).contentShape(Rectangle())
             }
-            LinearGradient(
-                colors: [Color.black.opacity(0.06), Color.clear, Color.black.opacity(0.10)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            .buttonStyle(PressableButtonStyle(scale: 0.9))
+
+            CoverArtView(url: song?.coverURL, size: 40, cornerRadius: 6)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(song?.name ?? "未在播放")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(song?.artists ?? "")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            if let song, settings.showMiniPlayerStar {
+                Button {
+                    Haptics.tap()
+                    let liked = favorites.toggle(song)
+                    ToastCenter.shared.show(liked ? "已收藏" : "已取消收藏",
+                                            icon: liked ? "star.fill" : "star")
+                } label: {
+                    Image(systemName: favorites.contains(song) ? "star.fill" : "star")
+                        .font(.system(size: 16))
+                        .foregroundStyle(favorites.contains(song) ? settings.accent.color : Color.secondary)
+                        .frame(width: 34, height: 36).contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle(scale: 0.9))
+            }
+
+            if settings.showMiniPlayerMore {
+                SongMoreButton(song: song)
+            }
         }
-        .animation(.easeInOut(duration: 0.5), value: song?.identityKey)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 
-    private func contentLayer(artworkSize: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button { Haptics.tap(); dismissView() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40).contentShape(Rectangle())
-                }
-                .buttonStyle(PressableButtonStyle(scale: 0.9))
+    // MARK: - 待播清单头
 
-                Spacer()
-
-                if let notice = player.notice {
-                    Text(notice).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                }
-
-                Spacer()
-
-                Button { Haptics.tap(); showQueue = true } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40).contentShape(Rectangle())
-                }
-                .buttonStyle(PressableButtonStyle(scale: 0.9))
+    private var queueHeader: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("待播清单")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.primary)
+                Text(player.notice ?? "来自 当前播放")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 12).padding(.top, 8)
 
             Spacer(minLength: 8)
 
-            CoverArtView(url: song?.coverURL, size: artworkSize, cornerRadius: 10)
-                .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
-                .scaleEffect(player.isPlaying ? 1.0 : 0.94)
-                .animation(.spring(response: 0.42, dampingFraction: 0.82), value: player.isPlaying)
-
-            Spacer(minLength: 16)
-
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(song?.name ?? "未在播放")
-                        .font(.system(size: 20, weight: .semibold)).lineLimit(1)
-                    Text(song?.artists ?? "")
-                        .font(.system(size: 16)).foregroundStyle(Color.accentColor).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if let song {
+            if settings.showNowPlayingModeButtons {
+                HStack(spacing: 14) {
                     Button {
-                        Haptics.tap()
-                        let liked = favorites.toggle(song)
-                        ToastCenter.shared.show(liked ? "已收藏" : "已取消收藏",
-                                                icon: liked ? "heart.fill" : "heart")
+                        player.setPlayMode(.shuffle)
+                        ToastCenter.shared.show("随机播放", icon: "shuffle")
                     } label: {
-                        Image(systemName: favorites.contains(song) ? "heart.fill" : "heart")
-                            .font(.system(size: 20))
-                            .foregroundStyle(favorites.contains(song) ? Color.red : Color.secondary)
-                            .frame(width: 44, height: 44).contentShape(Rectangle())
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(player.playMode == .shuffle ? settings.accent.color : Color.secondary)
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.9))
+
+                    Button {
+                        player.setPlayMode(.repeatAll)
+                        ToastCenter.shared.show("列表循环", icon: "repeat")
+                    } label: {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 16))
+                            .foregroundStyle(player.playMode == .repeatAll ? settings.accent.color : Color.secondary)
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.9))
+
+                    Button {
+                        player.setPlayMode(.repeatOne)
+                        ToastCenter.shared.show("单曲循环", icon: "repeat.1")
+                    } label: {
+                        Image(systemName: "repeat.1")
+                            .font(.system(size: 16))
+                            .foregroundStyle(player.playMode == .repeatOne ? settings.accent.color : Color.secondary)
                     }
                     .buttonStyle(PressableButtonStyle(scale: 0.9))
                 }
             }
-            .padding(.horizontal, 28)
-
-            progressBar.padding(.horizontal, 28).padding(.top, 14)
-            playbackControls.padding(.horizontal, 32).padding(.top, 18)
-            bottomBar.padding(.horizontal, 32).padding(.top, 20)
-
-            Spacer(minLength: 24)
         }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
     }
+
+    // MARK: - 队列列表
+
+    private var queueList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(player.queue.enumerated()), id: \.element.identityKey) { index, item in
+                    SongRow(
+                        song: item,
+                        index: index + 1,
+                        showArtist: true,
+                        isCurrent: player.currentSong?.identityKey == item.identityKey,
+                        isPlaying: player.isPlaying,
+                        showHandle: true,
+                        onTap: {
+                            player.play(songs: player.queue, startAt: index)
+                        },
+                        onMore: nil
+                    )
+                    if index < player.queue.count - 1 { InsetDivider(leading: 74) }
+                }
+            }
+            .padding(.bottom, 8)
+        }
+        .compatScrollIndicatorsHidden()
+    }
+
+    // MARK: - 进度条
 
     private var progressBar: some View {
         VStack(spacing: 5) {
@@ -144,7 +239,7 @@ struct NowPlayingView: View {
 
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.16)).frame(height: isScrubbing ? 7 : 4)
-                    Capsule().fill(Color.primary.opacity(0.75))
+                    Capsule().fill(settings.accent.color)
                         .frame(width: width * CGFloat(ratio), height: isScrubbing ? 7 : 4)
                 }
                 .frame(height: 20)
@@ -176,95 +271,72 @@ struct NowPlayingView: View {
         }
     }
 
+    // MARK: - 播放控制
+
     private var playbackControls: some View {
         HStack(spacing: 0) {
             Button { Haptics.tap(); player.previous() } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 26)).foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity).frame(height: 60).contentShape(Rectangle())
+                    .font(.system(size: 28)).foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity).frame(height: 56).contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle(scale: 0.88))
 
             Button { player.togglePlayPause() } label: {
                 ZStack {
                     if player.isBuffering { ProgressView().scaleEffect(1.1) }
-                    else { PlayPauseIcon(isPlaying: player.isPlaying, size: 34).foregroundStyle(.primary) }
+                    else { PlayPauseIcon(isPlaying: player.isPlaying, size: 36).foregroundStyle(.primary) }
                 }
-                .frame(maxWidth: .infinity).frame(height: 60).contentShape(Rectangle())
+                .frame(maxWidth: .infinity).frame(height: 56).contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle(scale: 0.88))
 
             Button { Haptics.tap(); player.next() } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 26)).foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity).frame(height: 60).contentShape(Rectangle())
+                    .font(.system(size: 28)).foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity).frame(height: 56).contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle(scale: 0.88))
         }
     }
 
+    // MARK: - 底部工具条
+
     private var bottomBar: some View {
         HStack(spacing: 0) {
-            Button { Haptics.tap(); showVolume.toggle() } label: {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 17)).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(PressableButtonStyle(scale: 0.9))
-
-            Button {
-                player.togglePlayMode()
-                ToastCenter.shared.show(player.playMode.title, icon: player.playMode.icon)
-            } label: {
-                Image(systemName: player.playMode.icon)
-                    .font(.system(size: 17)).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(PressableButtonStyle(scale: 0.9))
-
-            if settings.showLyricsInPlayer {
-                Button { Haptics.tap(); showLyrics = true } label: {
-                    Image(systemName: "quote.bubble")
-                        .font(.system(size: 17)).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity).frame(height: 44).contentShape(Rectangle())
+            Button { Haptics.tap(); showLyrics = true } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "quote.bubble").font(.system(size: 18))
+                    Text("歌词").font(.system(size: 10))
                 }
-                .buttonStyle(PressableButtonStyle(scale: 0.9))
-            }
-
-            Button {
-                Haptics.tap()
-                if let song {
-                    Task {
-                        let result = await DownloadManager.download(song: song)
-                        await MainActor.run {
-                            switch result {
-                            case .success: ToastCenter.shared.success("已下载")
-                            case .failure(let error): ToastCenter.shared.error(error.localizedDescription)
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 17)).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 44).contentShape(Rectangle())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle(scale: 0.9))
-        }
-        .overlay(alignment: .topLeading) {
-            if showVolume {
-                SystemVolumeSlider()
-                    .frame(width: 200, height: 34)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background {
-                        Capsule().fill(Color(uiColor: .secondarySystemBackground))
-                    }
-                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                    .offset(y: -46)
+
+            Button { Haptics.tap(); showQueue = true } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 18))
+                    Text("电台").font(.system(size: 10))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
             }
+            .buttonStyle(PressableButtonStyle(scale: 0.9))
+
+            Button { Haptics.tap(); showQueue = true } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "list.bullet").font(.system(size: 18))
+                    Text("队列").font(.system(size: 10))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
+            }
+            .buttonStyle(PressableButtonStyle(scale: 0.9))
         }
     }
+
+    // MARK: - 手势
 
     private var dismissGesture: some Gesture {
         DragGesture()
@@ -290,6 +362,30 @@ struct NowPlayingView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// 「更多」按钮：弹出歌曲操作菜单
+struct SongMoreButton: View {
+    let song: Song?
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            isPresented = true
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 36).contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.9))
+        .sheet(isPresented: $isPresented) {
+            if let song {
+                SongSheetContainer(song: song)
+            }
+        }
     }
 }
 

@@ -89,6 +89,27 @@ enum CacheManager {
         return formatter.string(fromByteCount: max(0, bytes))
     }
 
+    /// 缓存总上限（不含已下载歌曲）：默认 250MB。
+    /// 超限时自动清理网络缓存与临时文件，避免无限膨胀。
+    static let softLimitBytes: Int64 = 250 * 1024 * 1024
+
+    /// 启动 / 回到前台时调用：超限就自动瘦身
+    static func enforceLimits() {
+        let size = totalSize()
+        guard size > softLimitBytes else { return }
+
+        BeansLogger.shared.log("缓存 \(formatted(size)) 超限，自动清理", level: .info)
+        URLCache.shared.removeAllCachedResponses()
+        PlaybackURLCache.clear()
+
+        let fm = FileManager.default
+        clearContents(of: fm.temporaryDirectory)
+
+        // 封面缓存由 ImageDiskCache 自身按 60MB 上限做 LRU，这里不必整清
+        let after = totalSize()
+        BeansLogger.shared.log("清理后缓存 \(formatted(after))", level: .info)
+    }
+
     // MARK: - Private
 
     private static func directorySize(in domain: FileManager.SearchPathDirectory, subpath: String) -> Int64 {

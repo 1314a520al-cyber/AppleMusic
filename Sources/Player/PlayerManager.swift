@@ -326,7 +326,9 @@ final class PlayerManager: NSObject, ObservableObject {
         notice = sourceNote.map { "来自 \($0)" }
 
         let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 5
+        // 只预缓冲 2 秒：默认值会吞掉大量内存与网络缓存，
+        // 对在线流媒体没必要，也是内存占用偏高的原因之一。
+        item.preferredForwardBufferDuration = 2
 
         if let existing = player { existing.replaceCurrentItem(with: item) }
         else {

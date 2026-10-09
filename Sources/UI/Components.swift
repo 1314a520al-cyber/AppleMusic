@@ -270,3 +270,113 @@ struct InsetDivider: View {
             .padding(.leading, leading)
     }
 }
+
+// MARK: - 页面背景
+
+/// 页面统一背景：深色底 + 极淡的主题色氛围渐变。
+/// 关闭「动态壁纸」时退化为纯色底。
+struct BackdropLayer: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemBackground)
+
+            if settings.dynamicWallpaper {
+                LinearGradient(
+                    colors: [
+                        settings.accent.color.opacity(0.16),
+                        settings.accent.color.opacity(0.04),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .blur(radius: 50)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - 顶部栏
+
+/// 页面顶部栏：左上角圆形按钮 + 标题 + 右上角平台切换/按钮。
+/// 各元素显示与否都受设置控制。
+struct TopBar: View {
+    var title: String
+    @Binding var showNowPlaying: Bool
+
+    @EnvironmentObject private var player: PlayerManager
+    @EnvironmentObject private var settings: AppSettings
+    @ObservedObject private var platformStore = PlatformPreferenceStore.shared
+
+    var body: some View {
+        HStack(spacing: 12) {
+
+            if settings.showTopLeftAvatar {
+                Circle()
+                    .fill(settings.accent.color.gradient)
+                    .frame(width: 34, height: 34)
+                    .overlay {
+                        Text("K")
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+            }
+
+            Text(title)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 8)
+
+            if settings.showPlatformSwitcher {
+                platformMenu
+            }
+
+            if settings.showTopRightButton {
+                Button {
+                    Haptics.tap()
+                    showNowPlaying = player.currentSong != nil
+                } label: {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                }
+                .buttonStyle(PressableButtonStyle(scale: 0.92))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var platformMenu: some View {
+        Menu {
+            ForEach(MusicPlatform.allCases) { item in
+                Button {
+                    platformStore.platform = item
+                    Haptics.select()
+                    ToastCenter.shared.show("已切换到\(item.title)")
+                } label: {
+                    Label(item.title, systemImage: platformStore.platform == item ? "checkmark" : item.icon)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(platformStore.platform.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.primary.opacity(0.08)))
+        }
+    }
+}

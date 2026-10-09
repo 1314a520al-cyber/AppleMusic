@@ -22,7 +22,7 @@ struct LibraryView: View {
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                AmbienceBackdrop(tint: .pink)
+                BackdropLayer()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {

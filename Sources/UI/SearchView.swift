@@ -44,7 +44,7 @@ struct SearchView: View {
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                AmbienceBackdrop(tint: .accentColor)
+                BackdropLayer()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {

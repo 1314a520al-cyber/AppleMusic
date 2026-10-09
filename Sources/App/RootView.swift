@@ -4,6 +4,9 @@
 //
 //  根视图：页面 + 悬浮底栏 + 迷你播放条 + 全屏播放页。
 //
+//  底栏显示哪些项目由 AppSettings.activeTabs 决定；
+//  当用户关闭某个 Tab 时，当前选中项会自动回退到第一个可用项。
+//
 
 import SwiftUI
 
@@ -21,9 +24,10 @@ struct RootView: View {
             Group {
                 switch selection {
                 case .home:    HomeView(showNowPlaying: $showNowPlaying)
+                case .browse:  BrowseView(showNowPlaying: $showNowPlaying)
                 case .radio:   RadioView(showNowPlaying: $showNowPlaying)
-                case .search:  SearchView(showNowPlaying: $showNowPlaying)
                 case .library: LibraryView(showNowPlaying: $showNowPlaying)
+                case .search:  SearchView(showNowPlaying: $showNowPlaying)
                 case .mine:    MineView()
                 }
             }
@@ -32,7 +36,7 @@ struct RootView: View {
             VStack(spacing: 8) {
                 if settings.showMiniPlayer, player.currentSong != nil {
                     MiniPlayerBar(showNowPlaying: $showNowPlaying)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, settings.floatingTabBar ? 12 : 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 FloatingTabBar(
@@ -43,11 +47,27 @@ struct RootView: View {
             .animation(.spring(response: 0.36, dampingFraction: 0.85), value: player.currentSong?.identityKey)
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .preferredColorScheme(settings.themeMode.colorScheme)
+        .tint(settings.accent.color)
         .fullScreenCover(isPresented: $showNowPlaying) {
             NowPlayingView(isPresented: $showNowPlaying)
                 .environmentObject(player)
                 .environmentObject(player.clock)
         }
-        .onAppear { Haptics.prepare() }
+        .onAppear {
+            Haptics.prepare()
+            ensureSelectionValid()
+        }
+        .onChange(of: settings.enabledTabs) { _ in
+            ensureSelectionValid()
+        }
+    }
+
+    /// 当前选中的 Tab 若被隐藏，自动切到第一个可用项
+    private func ensureSelectionValid() {
+        let tabs = settings.activeTabs
+        if !tabs.contains(selection), let first = tabs.first {
+            selection = first
+        }
     }
 }
