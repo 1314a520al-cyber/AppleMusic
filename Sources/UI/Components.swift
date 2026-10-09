@@ -316,7 +316,16 @@ struct TopBar: View {
 
             if settings.showTopLeftAvatar {
                 Circle()
-                    .fill(settings.accent.color.gradient)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                settings.accent.color,
+                                settings.accent.color.opacity(0.72)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .frame(width: 34, height: 34)
                     .overlay {
                         Text("K")
