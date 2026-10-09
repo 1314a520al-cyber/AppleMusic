@@ -2,7 +2,13 @@
 //  SearchView.swift
 //  AppleMusic
 //
-//  「搜索」：三平台切换搜索 + 历史 + 热搜。
+//  「搜索」。
+//
+//  结构（对照参考图）：
+//    左上「搜索」大标题 + 右上角圆形头像
+//    搜索框（灰底圆角：放大镜 + 占位文字 + 麦克风）
+//    「类别浏览」双列彩色卡片（图片铺满 + 左下角白色标签）
+//    搜索后：平台切换 + 结果列表
 //
 
 import SwiftUI
@@ -28,12 +34,12 @@ struct SearchView: View {
 
     @EnvironmentObject private var player: PlayerManager
     @EnvironmentObject private var favorites: FavoritesStore
+    @EnvironmentObject private var settings: AppSettings
     @ObservedObject private var history = SearchHistoryStore.shared
 
     @State private var keyword = ""
     @State private var platform: SearchPlatform = .netease
     @State private var results: [Song] = []
-    @State private var hotWords: [String] = []
     @State private var isSearching = false
     @State private var hasSearched = false
     @State private var errorText: String?
@@ -41,37 +47,49 @@ struct SearchView: View {
 
     @FocusState private var searchFocused: Bool
 
+    private let categories: [(String, [Color])] = [
+        ("国语流行", [Color(red: 0.55, green: 0.30, blue: 0.85), Color(red: 0.30, green: 0.20, blue: 0.60)]),
+        ("K-Pop",    [Color(red: 0.90, green: 0.40, blue: 0.55), Color(red: 0.60, green: 0.20, blue: 0.40)]),
+        ("国际流行", [Color(red: 0.20, green: 0.55, blue: 0.90), Color(red: 0.10, green: 0.30, blue: 0.65)]),
+        ("粤语流行", [Color(red: 0.95, green: 0.55, blue: 0.25), Color(red: 0.70, green: 0.30, blue: 0.15)]),
+        ("嘻哈说唱", [Color(red: 0.25, green: 0.70, blue: 0.60), Color(red: 0.10, green: 0.40, blue: 0.40)]),
+        ("独家精选", [Color(red: 0.85, green: 0.30, blue: 0.35), Color(red: 0.55, green: 0.15, blue: 0.25)])
+    ]
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                BackdropLayer()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Text("搜索")
-                            .font(.system(size: 34, weight: .bold))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
 
-                        searchField.padding(.horizontal, 20)
-                        platformPicker.padding(.horizontal, 20)
+                        header
+
+                        searchField
+                            .padding(.horizontal, 16)
 
                         if isSearching {
                             LoadingStateView(text: "搜索中…")
                         } else if hasSearched {
-                            searchResultsSection
+                            resultsSection
                         } else {
-                            discoverySection
+                            browseSection
                         }
 
-                        Spacer(minLength: 150)
+                        Spacer(minLength: 170)
                     }
+                    .padding(.top, 6)
                 }
                 .compatScrollIndicatorsHidden()
             }
             .navigationBarHidden(true)
         }
-        .task { await loadHotWords() }
         .sheet(item: $selectedSong) { song in
             SongSheetContainer(song: song)
                 .environmentObject(player)
@@ -79,11 +97,30 @@ struct SearchView: View {
         }
     }
 
+    // MARK: - 顶部
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("搜索")
+                .font(.system(size: 34, weight: .bold))
+
+            Spacer()
+
+            if settings.showTopLeftAvatar {
+                AvatarButton()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+    }
+
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 15)).foregroundStyle(.secondary)
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
 
-            TextField("歌曲、歌手、专辑", text: $keyword)
+            TextField("艺人、歌曲、歌词以及更多内容", text: $keyword)
                 .font(.system(size: 16))
                 .focused($searchFocused)
                 .submitLabel(.search)
@@ -91,52 +128,124 @@ struct SearchView: View {
                 .textInputAutocapitalization(.never)
                 .onSubmit { performSearch() }
 
-            if !keyword.isEmpty {
+            if keyword.isEmpty {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+            } else {
                 Button {
-                    keyword = ""; results = []; hasSearched = false
+                    keyword = ""
+                    results = []
+                    hasSearched = false
                 } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(.secondary)
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
-        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.07)) }
-    }
-
-    private var platformPicker: some View {
-        HStack(spacing: 8) {
-            ForEach(SearchPlatform.allCases) { item in
-                Button {
-                    guard platform != item else { return }
-                    Haptics.select()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { platform = item }
-                    if hasSearched { performSearch() }
-                } label: {
-                    Text(item.title)
-                        .font(.system(size: 14, weight: platform == item ? .semibold : .regular))
-                        .foregroundStyle(platform == item ? Color.white : Color.primary)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background {
-                            Capsule().fill(platform == item ? Color.accentColor : Color.primary.opacity(0.07))
-                        }
-                }
-                .buttonStyle(PressableButtonStyle(scale: 0.95))
-            }
-            Spacer(minLength: 0)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
         }
     }
 
-    private var searchResultsSection: some View {
+    // MARK: - 类别浏览
+
+    private var browseSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("类别浏览")
+                .font(.system(size: 22, weight: .bold))
+                .padding(.horizontal, 16)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(categories, id: \.0) { name, colors in
+                    Button {
+                        keyword = name
+                        performSearch()
+                    } label: {
+                        ZStack(alignment: .bottomLeading) {
+                            LinearGradient(colors: colors,
+                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                            Image(systemName: "music.note")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.white.opacity(0.14))
+                                .offset(x: 62, y: -8)
+
+                            Text(name)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(12)
+                        }
+                        .frame(height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.97))
+                }
+            }
+            .padding(.horizontal, 16)
+
+            // 最近搜索
+            if !history.keywords.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("最近搜索")
+                            .font(.system(size: 22, weight: .bold))
+                        Spacer()
+                        Button("清除") { history.clear(); Haptics.tap() }
+                            .font(.system(size: 15))
+                            .foregroundStyle(settings.accent.color)
+                    }
+                    .padding(.horizontal, 16)
+
+                    VStack(spacing: 0) {
+                        ForEach(history.keywords, id: \.self) { word in
+                            Button {
+                                keyword = word
+                                performSearch()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 22)
+                                    Text(word)
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(.primary)
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "arrow.up.left")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 16).padding(.vertical, 11)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 搜索结果
+
+    private var resultsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
+            platformPicker
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+
             if let errorText {
                 EmptyStateView(icon: "exclamationmark.magnifyingglass", title: "搜索失败", message: errorText)
             } else if results.isEmpty {
                 EmptyStateView(icon: "magnifyingglass", title: "没有找到结果",
                                message: "换个关键词，或切换其他平台试试")
             } else {
-                GroupCaption(text: "\(platform.title) · \(results.count) 个结果")
                 ForEach(Array(results.enumerated()), id: \.element.identityKey) { index, song in
                     SongRow(
                         song: song,
@@ -146,7 +255,7 @@ struct SearchView: View {
                             player.play(songs: results, startAt: index)
                             showNowPlaying = true
                         },
-                        onMore: { selectedSong = song }
+                        onMore: settings.showSongRowMore ? { selectedSong = song } : nil
                     )
                     if index < results.count - 1 { InsetDivider() }
                 }
@@ -154,39 +263,26 @@ struct SearchView: View {
         }
     }
 
-    private var discoverySection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if !history.keywords.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        SectionTitle(text: "最近搜索")
-                        Spacer()
-                        Button("清除") { history.clear(); Haptics.tap() }
-                            .font(.system(size: 14)).foregroundStyle(Color.accentColor)
-                    }
-                    .padding(.horizontal, 20)
-
-                    FlowLayout(spacing: 8, items: history.keywords) { word in
-                        keyword = word
-                        performSearch()
-                    }
-                    .padding(.horizontal, 20)
+    private var platformPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(SearchPlatform.allCases) { item in
+                Button {
+                    guard platform != item else { return }
+                    Haptics.select()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { platform = item }
+                    performSearch()
+                } label: {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: platform == item ? .semibold : .regular))
+                        .foregroundStyle(platform == item ? Color.white : Color.primary)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background {
+                            Capsule().fill(platform == item ? settings.accent.color : Color.primary.opacity(0.08))
+                        }
                 }
+                .buttonStyle(PressableButtonStyle(scale: 0.95))
             }
-
-            if !hotWords.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionTitle(text: "热门搜索").padding(.horizontal, 20)
-                    FlowLayout(spacing: 8, items: hotWords) { word in
-                        keyword = word
-                        performSearch()
-                    }
-                    .padding(.horizontal, 20)
-                }
-            } else if history.keywords.isEmpty {
-                EmptyStateView(icon: "magnifyingglass", title: "搜索你想听的音乐",
-                               message: "支持网易云、QQ 音乐、酷狗三个平台")
-            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -214,109 +310,5 @@ struct SearchView: View {
             }
             await MainActor.run { results = found; isSearching = false }
         }
-    }
-
-    private func loadHotWords() async {
-        guard hotWords.isEmpty else { return }
-        var words: [String] = []
-        if let list = try? await NetEaseAPI.shared.hotSearch(), !list.isEmpty {
-            words = list
-        } else if let list = try? await QQMusicAPI.shared.hotKeys(limit: 12), !list.isEmpty {
-            words = list
-        }
-        await MainActor.run { hotWords = Array(words.prefix(12)) }
-    }
-}
-
-// MARK: - 流式标签布局（iOS 15 兼容）
-
-struct FlowLayout: View {
-    var spacing: CGFloat = 8
-    var lineSpacing: CGFloat = 8
-    let items: [String]
-    let onTap: (String) -> Void
-
-    @State private var sizes: [String: CGSize] = [:]
-
-    var body: some View {
-        GeometryReader { geo in
-            buildRows(maxWidth: geo.size.width)
-        }
-        .frame(height: estimatedHeight)
-        .background {
-            VStack(spacing: 0) {
-                ForEach(items, id: \.self) { item in
-                    Text(item)
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(
-                            GeometryReader { proxy in
-                                Color.clear.preference(key: FlowSizeKey.self, value: [item: proxy.size])
-                            }
-                        )
-                }
-            }
-            .hidden()
-        }
-        .onPreferenceChange(FlowSizeKey.self) { sizes = $0 }
-    }
-
-    @ViewBuilder
-    private func buildRows(maxWidth: CGFloat) -> some View {
-        let rows = arrange(maxWidth: maxWidth)
-        VStack(alignment: .leading, spacing: lineSpacing) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: spacing) {
-                    ForEach(row, id: \.self) { item in
-                        Button {
-                            Haptics.tap()
-                            onTap(item)
-                        } label: {
-                            Text(item)
-                                .font(.system(size: 14))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background { Capsule().fill(Color.primary.opacity(0.07)) }
-                        }
-                        .buttonStyle(PressableButtonStyle(scale: 0.95))
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-
-    private func arrange(maxWidth: CGFloat) -> [[String]] {
-        var rows: [[String]] = []
-        var current: [String] = []
-        var currentWidth: CGFloat = 0
-        let usable = max(maxWidth, 1)
-
-        for item in items {
-            let width = sizes[item]?.width ?? (CGFloat(item.count) * 14 + 28)
-            if currentWidth + width > usable, !current.isEmpty {
-                rows.append(current); current = []; currentWidth = 0
-            }
-            current.append(item)
-            currentWidth += width + spacing
-        }
-        if !current.isEmpty { rows.append(current) }
-        return rows
-    }
-
-    private var estimatedHeight: CGFloat {
-        guard !items.isEmpty else { return 0 }
-        let rows = arrange(maxWidth: 320)
-        let rowHeight: CGFloat = sizes.values.map(\.height).max() ?? 36
-        return CGFloat(rows.count) * rowHeight + CGFloat(max(0, rows.count - 1)) * lineSpacing
-    }
-}
-
-struct FlowSizeKey: PreferenceKey {
-    static var defaultValue: [String: CGSize] = [:]
-    static func reduce(value: inout [String: CGSize], nextValue: () -> [String: CGSize]) {
-        value.merge(nextValue()) { _, new in new }
     }
 }

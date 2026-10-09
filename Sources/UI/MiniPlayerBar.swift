@@ -2,9 +2,11 @@
 //  MiniPlayerBar.swift
 //  AppleMusic
 //
-//  悬浮迷你播放条。
-//  布局与参考图一致：封面 + 歌名/歌手 + 星标 + 三个控制键 + 更多。
-//  星标 / 更多按钮的显示由设置控制。
+//  底部迷你播放条。
+//
+//  与参考图一致：深灰圆角矩形，左侧封面，中间歌名/歌手，
+//  右侧「播放/暂停」与「下一首」两个按钮。
+//  星标 / 更多按钮为可选（设置里默认关闭，与参考图一致）。
 //
 
 import SwiftUI
@@ -22,24 +24,23 @@ struct MiniPlayerBar: View {
 
     var body: some View {
         if let song {
-            ZStack(alignment: .top) {
-                HStack(spacing: 10) {
-                    CoverArtView(url: song.coverURL, size: 40, cornerRadius: 6)
+            HStack(spacing: 12) {
+                CoverArtView(url: song.coverURL, size: 48, cornerRadius: 6)
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(song.name)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Text(song.artists.isEmpty ? song.album : song.artists)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(song.name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(song.artists.isEmpty ? song.album : song.artists)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
-                    Spacer(minLength: 4)
+                Spacer(minLength: 6)
 
-                    // 星标（收藏）
+                HStack(spacing: 0) {
                     if settings.showMiniPlayerStar {
                         Button {
                             Haptics.tap()
@@ -48,82 +49,56 @@ struct MiniPlayerBar: View {
                                                     icon: liked ? "star.fill" : "star")
                         } label: {
                             Image(systemName: favorites.contains(song) ? "star.fill" : "star")
-                                .font(.system(size: 16))
+                                .font(.system(size: 17))
                                 .foregroundStyle(favorites.contains(song) ? settings.accent.color : Color.secondary)
-                                .frame(width: 34, height: 38)
+                                .frame(width: 40, height: 40)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(PressableButtonStyle(scale: 0.9))
                     }
 
-                    // 上一首 / 播放暂停 / 下一首
-                    HStack(spacing: 0) {
-                        Button {
-                            Haptics.tap()
-                            player.previous()
-                        } label: {
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                                .frame(width: 34, height: 38)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PressableButtonStyle(scale: 0.9))
-
-                        Button {
-                            player.togglePlayPause()
-                        } label: {
-                            PlayPauseIcon(isPlaying: player.isPlaying, size: 19)
-                                .foregroundStyle(.primary)
-                                .frame(width: 38, height: 38)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PressableButtonStyle(scale: 0.9))
-
-                        Button {
-                            Haptics.tap()
-                            player.next()
-                        } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 15))
-                                .foregroundStyle(.primary)
-                                .frame(width: 34, height: 38)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PressableButtonStyle(scale: 0.9))
+                    Button {
+                        player.togglePlayPause()
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(PressableButtonStyle(scale: 0.9))
 
-                    // 更多
+                    Button {
+                        Haptics.tap()
+                        player.next()
+                    } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 19))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.9))
+
                     if settings.showMiniPlayerMore {
                         Button {
                             Haptics.tap()
                             selectedSong = song
                         } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 30, height: 38)
+                                .frame(width: 36, height: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(PressableButtonStyle(scale: 0.9))
-                        .padding(.trailing, 2)
                     }
                 }
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-
-                // 顶部进度线
-                GeometryReader { geo in
-                    let ratio = player.clock.duration > 0
-                        ? min(1, max(0, player.clock.progress / player.clock.duration))
-                        : 0
-                    Rectangle()
-                        .fill(settings.accent.color)
-                        .frame(width: geo.size.width * CGFloat(ratio), height: 2)
-                }
-                .frame(height: 2)
             }
-            .background { glassBackground }
+            .padding(.vertical, 6)
+            .padding(.leading, 8)
+            .padding(.trailing, 4)
+            .background { barBackground }
             .contentShape(Rectangle())
             .onTapGesture {
                 Haptics.tap()
@@ -137,26 +112,27 @@ struct MiniPlayerBar: View {
         }
     }
 
-    private var glassBackground: some View {
-        Capsule(style: .continuous)
-            .fill(.clear)
-            .background {
-                VisualEffectBlurView(style: .systemThinMaterial)
-                    .clipShape(Capsule(style: .continuous))
-            }
-            .overlay {
-                Capsule(style: .continuous).strokeBorder(.white.opacity(0.16), lineWidth: 0.7)
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.14), .white.opacity(0.03), .black.opacity(0.05)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                    .allowsHitTesting(false)
-            }
-            .shadow(color: .black.opacity(0.24), radius: 16, y: 6)
+    /// 深灰圆角矩形（与参考图一致），开启悬浮时用毛玻璃胶囊
+    @ViewBuilder
+    private var barBackground: some View {
+        if settings.floatingTabBar {
+            Capsule(style: .continuous)
+                .fill(.clear)
+                .background {
+                    VisualEffectBlurView(style: .systemThinMaterial)
+                        .clipShape(Capsule(style: .continuous))
+                }
+                .overlay {
+                    Capsule(style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.7)
+                }
+                .shadow(color: .black.opacity(0.24), radius: 14, y: 5)
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                }
+        }
     }
 }

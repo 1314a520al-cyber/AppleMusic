@@ -2,7 +2,12 @@
 //  LibraryView.swift
 //  AppleMusic
 //
-//  「资料库」：收藏、歌单、下载、历史。
+//  「资料库」。
+//
+//  结构（对照参考图）：
+//    左上「编辑」按钮，中间偏左「资料库」大标题，右上圆形头像
+//    红色图标的分类列表（播放列表 / 艺人 / 专辑 / 歌曲 / 类型 / 作曲者）
+//    「最近添加」双列大卡
 //
 
 import SwiftUI
@@ -14,79 +19,110 @@ struct LibraryView: View {
     @EnvironmentObject private var favorites: FavoritesStore
     @EnvironmentObject private var playlists: PlaylistStore
     @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var settings: AppSettings
     @ObservedObject private var history = PlayHistoryStore.shared
 
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
+    @State private var showEditMode = false
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
 
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                BackdropLayer()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("资料库")
-                            .font(.system(size: 34, weight: .bold))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
+                    VStack(alignment: .leading, spacing: 22) {
 
+                        header
+
+                        // 分类列表
+                        VStack(spacing: 0) {
+                            categoryRow(icon: "music.note.list", title: "播放列表") { }
+                            InsetDivider(leading: 56)
+                            categoryRow(icon: "music.mic", title: "艺人") { }
+                            InsetDivider(leading: 56)
+                            categoryRow(icon: "square.stack", title: "专辑") { }
+                            InsetDivider(leading: 56)
+                            categoryRow(icon: "music.note", title: "歌曲") { }
+                            InsetDivider(leading: 56)
+                            categoryRow(icon: "guitars", title: "类型") { }
+                            InsetDivider(leading: 56)
+                            categoryRow(icon: "music.note.tv", title: "作曲者") { }
+                        }
+                        .background {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.primary.opacity(0.05))
+                        }
+                        .padding(.horizontal, 16)
+
+                        // 已收藏 / 已下载 / 历史 快捷入口
                         VStack(spacing: 0) {
                             NavigationLink {
                                 FavoritesView(showNowPlaying: $showNowPlaying)
                                     .environmentObject(player).environmentObject(favorites)
                             } label: {
-                                categoryRow(icon: "heart.fill", tint: .pink, title: "已收藏歌曲",
-                                            detail: "\(favorites.songs.count) 首")
+                                categoryRow(icon: "star.fill", title: "已喜爱",
+                                            detail: "\(favorites.songs.count) 首") { }
                             }
                             .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
 
-                            InsetDivider(leading: 72)
+                            InsetDivider(leading: 56)
 
                             NavigationLink {
                                 DownloadsView(showNowPlaying: $showNowPlaying)
                                     .environmentObject(player).environmentObject(downloads)
                             } label: {
-                                categoryRow(icon: "arrow.down.circle.fill", tint: .green, title: "已下载",
-                                            detail: downloads.items.isEmpty ? "暂无" : "\(downloads.items.count) 首")
+                                categoryRow(icon: "arrow.down.circle.fill", title: "已下载",
+                                            detail: downloads.items.isEmpty ? nil : "\(downloads.items.count) 首") { }
                             }
                             .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
 
-                            InsetDivider(leading: 72)
+                            InsetDivider(leading: 56)
 
                             NavigationLink {
                                 HistoryView(showNowPlaying: $showNowPlaying)
                                     .environmentObject(player)
                             } label: {
-                                categoryRow(icon: "clock.fill", tint: .orange, title: "播放历史",
-                                            detail: history.songs.isEmpty ? "暂无" : "\(history.songs.count) 首")
+                                categoryRow(icon: "clock.fill", title: "最近播放",
+                                            detail: history.songs.isEmpty ? nil : "\(history.songs.count) 首") { }
                             }
                             .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
                         }
-                        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)) }
+                        .background {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.primary.opacity(0.05))
+                        }
                         .padding(.horizontal, 16)
 
+                        // 我的播放列表
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                SectionTitle(text: "我的歌单")
+                                Text("我的播放列表")
+                                    .font(.system(size: 22, weight: .bold))
                                 Spacer()
                                 Button {
                                     Haptics.tap(); showNewPlaylist = true
                                 } label: {
                                     Image(systemName: "plus")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(Color.accentColor)
-                                        .frame(width: 32, height: 32)
+                                        .font(.system(size: 17, weight: .semibold))
+                                        .foregroundStyle(settings.accent.color)
+                                        .frame(width: 34, height: 34)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PressableButtonStyle(scale: 0.9))
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 16)
 
                             if playlists.playlists.isEmpty {
-                                Text("还没有歌单，点右上角 ＋ 新建")
+                                Text("还没有播放列表")
                                     .font(.system(size: 14)).foregroundStyle(.secondary)
-                                    .padding(.horizontal, 20).padding(.vertical, 8)
+                                    .padding(.horizontal, 16)
                             } else {
                                 VStack(spacing: 0) {
                                     ForEach(playlists.playlists) { playlist in
@@ -96,7 +132,7 @@ struct LibraryView: View {
                                                 .environmentObject(favorites)
                                         } label: {
                                             HStack(spacing: 12) {
-                                                CoverArtView(url: playlist.coverURL, size: 48, cornerRadius: 5)
+                                                CoverArtView(url: playlist.coverURL, size: 48, cornerRadius: 6)
                                                 VStack(alignment: .leading, spacing: 2) {
                                                     Text(playlist.name).font(.system(size: 15))
                                                         .foregroundStyle(.primary).lineLimit(1)
@@ -107,9 +143,9 @@ struct LibraryView: View {
                                                 Image(systemName: "chevron.right")
                                                     .font(.system(size: 13, weight: .semibold))
                                                     .foregroundStyle(.tertiary)
-                                                    .padding(.trailing, 20)
+                                                    .padding(.trailing, 16)
                                             }
-                                            .padding(.vertical, 6).padding(.leading, 20)
+                                            .padding(.vertical, 6).padding(.leading, 16)
                                             .contentShape(Rectangle())
                                         }
                                         .buttonStyle(PressableButtonStyle(scale: 0.99, opacity: 0.9))
@@ -118,15 +154,53 @@ struct LibraryView: View {
                             }
                         }
 
-                        Spacer(minLength: 150)
+                        // 最近添加
+                        if !history.songs.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("最近添加")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .padding(.horizontal, 16)
+
+                                LazyVGrid(columns: columns, spacing: 18) {
+                                    ForEach(Array(history.songs.prefix(6).enumerated()), id: \.element.identityKey) { index, song in
+                                        Button {
+                                            Haptics.success()
+                                            player.play(songs: history.songs, startAt: index)
+                                            showNowPlaying = true
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 8) {
+                                                CoverArtView(url: song.coverURL, size: 160, cornerRadius: 8)
+                                                    .frame(maxWidth: .infinity)
+                                                    .aspectRatio(1, contentMode: .fit)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(song.name)
+                                                        .font(.system(size: 14, weight: .medium))
+                                                        .foregroundStyle(.primary)
+                                                        .lineLimit(1)
+                                                    Text(song.artists)
+                                                        .font(.system(size: 12))
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(PressableButtonStyle(scale: 0.97))
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        }
+
+                        Spacer(minLength: 170)
                     }
+                    .padding(.top, 6)
                 }
                 .compatScrollIndicatorsHidden()
             }
             .navigationBarHidden(true)
         }
-        .alert("新建歌单", isPresented: $showNewPlaylist) {
-            TextField("歌单名称", text: $newPlaylistName)
+        .alert("新建播放列表", isPresented: $showNewPlaylist) {
+            TextField("名称", text: $newPlaylistName)
             Button("取消", role: .cancel) { newPlaylistName = "" }
             Button("创建") {
                 playlists.create(name: newPlaylistName)
@@ -136,36 +210,78 @@ struct LibraryView: View {
         }
     }
 
-    private func categoryRow(icon: String, tint: Color, title: String, detail: String) -> some View {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button {
+                    Haptics.tap()
+                    ToastCenter.shared.show("长按列表可编辑排序")
+                } label: {
+                    Text("编辑")
+                        .font(.system(size: 17))
+                        .foregroundStyle(settings.accent.color)
+                }
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
+
+                Spacer()
+
+                if settings.showTopLeftAvatar {
+                    AvatarButton()
+                }
+            }
+            .padding(.horizontal, 16)
+
+            Text("资料库")
+                .font(.system(size: 34, weight: .bold))
+                .padding(.horizontal, 16)
+        }
+        .padding(.top, 4)
+    }
+
+    private func categoryRow(icon: String, title: String, detail: String? = nil, action: @escaping () -> Void) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(settings.accent.color)
+                .frame(width: 26)
+
+            Text(title)
                 .font(.system(size: 17))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(tint))
-            Text(title).font(.system(size: 16)).foregroundStyle(.primary)
+                .foregroundStyle(.primary)
+
             Spacer(minLength: 0)
-            Text(detail).font(.system(size: 14)).foregroundStyle(.secondary)
+
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.trailing, 16)
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .padding(.leading, 16)
+        .padding(.vertical, 13)
         .contentShape(Rectangle())
     }
 }
 
-// MARK: - 收藏
+// MARK: - 已喜爱
 
 struct FavoritesView: View {
     @Binding var showNowPlaying: Bool
     @EnvironmentObject private var player: PlayerManager
     @EnvironmentObject private var favorites: FavoritesStore
+    @EnvironmentObject private var settings: AppSettings
     @State private var selectedSong: Song?
 
     var body: some View {
         Group {
             if favorites.songs.isEmpty {
-                EmptyStateView(icon: "heart", title: "还没有收藏", message: "在歌曲上点「收藏」就会出现在这里")
+                EmptyStateView(icon: "star", title: "还没有喜爱的歌曲",
+                               message: "在歌曲菜单里点「喜爱」就会出现在这里")
             } else {
                 List {
                     ForEach(Array(favorites.songs.enumerated()), id: \.element.identityKey) { index, song in
@@ -177,7 +293,7 @@ struct FavoritesView: View {
                                 player.play(songs: favorites.songs, startAt: index)
                                 showNowPlaying = true
                             },
-                            onMore: { selectedSong = song }
+                            onMore: settings.showSongRowMore ? { selectedSong = song } : nil
                         )
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
@@ -188,7 +304,7 @@ struct FavoritesView: View {
                 .compatScrollBackgroundHidden()
             }
         }
-        .navigationTitle("已收藏歌曲")
+        .navigationTitle("已喜爱")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedSong) { song in
             SongSheetContainer(song: song)
@@ -197,7 +313,7 @@ struct FavoritesView: View {
     }
 }
 
-// MARK: - 下载
+// MARK: - 已下载
 
 struct DownloadsView: View {
     @Binding var showNowPlaying: Bool
@@ -245,7 +361,7 @@ struct DownloadsView: View {
     }
 }
 
-// MARK: - 历史
+// MARK: - 最近播放
 
 struct HistoryView: View {
     @Binding var showNowPlaying: Bool
@@ -277,7 +393,7 @@ struct HistoryView: View {
                 .compatScrollBackgroundHidden()
             }
         }
-        .navigationTitle("播放历史")
+        .navigationTitle("最近播放")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -291,7 +407,7 @@ struct HistoryView: View {
     }
 }
 
-// MARK: - 用户歌单详情
+// MARK: - 用户播放列表详情
 
 struct UserPlaylistDetailView: View {
     let playlistID: String
@@ -332,11 +448,11 @@ struct UserPlaylistDetailView: View {
                 .listStyle(.plain)
                 .compatScrollBackgroundHidden()
             } else {
-                EmptyStateView(icon: "music.note.list", title: "歌单是空的",
-                               message: "在歌曲菜单里「加入歌单」即可")
+                EmptyStateView(icon: "music.note.list", title: "播放列表是空的",
+                               message: "在歌曲菜单里「添加到播放列表」即可")
             }
         }
-        .navigationTitle(playlist?.name ?? "歌单")
+        .navigationTitle(playlist?.name ?? "播放列表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

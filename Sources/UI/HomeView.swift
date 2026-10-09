@@ -2,8 +2,15 @@
 //  HomeView.swift
 //  AppleMusic
 //
-//  「主页」：顶部栏 + 每日推荐 + 私人漫游大卡 + 排行榜横滑 + 新歌上架。
-//  每个板块都可用设置开关隐藏。
+//  「主页」。
+//
+//  结构（对照参考图）：
+//    左上「主页」大标题 + 右上角圆形头像按钮
+//    「最近播放」大卡（封面 + 标题 + 副标题）横滑
+//    「开始聆听」横滑大卡
+//    「为你推荐」横滑
+//
+//  各板块可用设置开关隐藏。
 //
 
 import SwiftUI
@@ -16,8 +23,8 @@ struct HomeView: View {
     @EnvironmentObject private var favorites: FavoritesStore
     @EnvironmentObject private var settings: AppSettings
 
-    @State private var dailySongs: [Song] = []
-    @State private var rankPlaylists: [Playlist] = []
+    @State private var recentlyPlayed: [Song] = []
+    @State private var playlists: [Playlist] = []
     @State private var newSongs: [Song] = []
     @State private var isLoading = false
     @State private var errorText: String?
@@ -26,16 +33,16 @@ struct HomeView: View {
     var body: some View {
         CompatNavigationStack {
             ZStack {
-                BackdropLayer()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 26) {
 
-                        TopBar(title: "主页", showNowPlaying: $showNowPlaying)
+                        header
 
-                        if isLoading && dailySongs.isEmpty && newSongs.isEmpty {
+                        if isLoading && recentlyPlayed.isEmpty && newSongs.isEmpty {
                             LoadingStateView(text: "正在载入…")
-                        } else if dailySongs.isEmpty && newSongs.isEmpty {
+                        } else if recentlyPlayed.isEmpty && newSongs.isEmpty && playlists.isEmpty {
                             VStack(spacing: 12) {
                                 EmptyStateView(icon: "wifi.exclamationmark", title: "无法载入",
                                                message: errorText ?? "请检查网络后重试")
@@ -51,65 +58,29 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity)
                         } else {
 
-                            if settings.showHomeRecommend, !dailySongs.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("每日推荐")
-                                        .font(.system(size: 22, weight: .bold))
-                                        .padding(.horizontal, 16)
-
-                                    Button {
-                                        Haptics.success()
-                                        player.play(songs: dailySongs, startAt: 0)
-                                        showNowPlaying = true
-                                    } label: {
-                                        BigEntryCard(
-                                            title: "每日推荐",
-                                            subtitle: "根据你的口味生成 · \(dailySongs.count) 首",
-                                            coverURL: dailySongs.first?.coverURL,
-                                            accent: settings.accent.color
-                                        )
-                                    }
-                                    .buttonStyle(PressableButtonStyle(scale: 0.98))
-                                    .padding(.horizontal, 16)
-                                }
-                            }
-
-                            if settings.showHomeRoam, !newSongs.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("私人漫游")
-                                        .font(.system(size: 22, weight: .bold))
-                                        .padding(.horizontal, 16)
-
-                                    Button {
-                                        Haptics.success()
-                                        player.setPlayMode(.shuffle)
-                                        player.play(songs: newSongs, startAt: Int.random(in: 0..<max(1, newSongs.count)))
-                                        showNowPlaying = true
-                                    } label: {
-                                        RoamCard()
-                                    }
-                                    .buttonStyle(PressableButtonStyle(scale: 0.98))
-                                    .padding(.horizontal, 16)
-                                }
-                            }
-
-                            if settings.showHomeRanking, !rankPlaylists.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("排行榜")
+                            // 最近播放
+                            if !recentlyPlayed.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("最近播放")
                                         .font(.system(size: 22, weight: .bold))
                                         .padding(.horizontal, 16)
 
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 14) {
-                                            ForEach(rankPlaylists) { item in
-                                                NavigationLink {
-                                                    PlaylistDetailView(playlist: item, showNowPlaying: $showNowPlaying)
-                                                        .environmentObject(player)
-                                                        .environmentObject(favorites)
+                                            ForEach(Array(recentlyPlayed.prefix(8).enumerated()), id: \.element.identityKey) { index, song in
+                                                Button {
+                                                    Haptics.success()
+                                                    player.play(songs: recentlyPlayed, startAt: index)
+                                                    showNowPlaying = true
                                                 } label: {
-                                                    PlaylistCard(playlist: item)
+                                                    LargeMediaCard(
+                                                        title: song.name,
+                                                        subtitle: song.artists,
+                                                        coverURL: song.coverURL,
+                                                        width: 300
+                                                    )
                                                 }
-                                                .buttonStyle(PressableButtonStyle(scale: 0.97))
+                                                .buttonStyle(PressableButtonStyle(scale: 0.98))
                                             }
                                         }
                                         .padding(.horizontal, 16)
@@ -117,12 +88,49 @@ struct HomeView: View {
                                 }
                             }
 
-                            if settings.showHomeNewAlbums, !newSongs.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text("新歌上架")
+                            // 开始聆听
+                            if !playlists.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("开始聆听")
                                         .font(.system(size: 22, weight: .bold))
                                         .padding(.horizontal, 16)
-                                        .padding(.bottom, 8)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 14) {
+                                            ForEach(playlists) { item in
+                                                NavigationLink {
+                                                    PlaylistDetailView(playlist: item, showNowPlaying: $showNowPlaying)
+                                                        .environmentObject(player)
+                                                        .environmentObject(favorites)
+                                                } label: {
+                                                    LargeMediaCard(
+                                                        title: item.name,
+                                                        subtitle: item.creatorName.isEmpty ? "精选歌单" : item.creatorName,
+                                                        coverURL: item.coverURL,
+                                                        width: 220
+                                                    )
+                                                }
+                                                .buttonStyle(PressableButtonStyle(scale: 0.98))
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                }
+                            }
+
+                            // 为你推荐
+                            if !newSongs.isEmpty, settings.showHomeNewAlbums {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    HStack {
+                                        Text("新歌精选")
+                                            .font(.system(size: 22, weight: .bold))
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, 8)
 
                                     ForEach(Array(newSongs.prefix(12).enumerated()), id: \.element.identityKey) { index, song in
                                         SongRow(
@@ -141,20 +149,39 @@ struct HomeView: View {
                             }
                         }
 
-                        Spacer(minLength: 160)
+                        Spacer(minLength: 170)
                     }
+                    .padding(.top, 6)
                 }
                 .compatScrollIndicatorsHidden()
                 .refreshable { await load() }
             }
             .navigationBarHidden(true)
         }
-        .task { if dailySongs.isEmpty && newSongs.isEmpty { await load() } }
+        .task { if recentlyPlayed.isEmpty && newSongs.isEmpty { await load() } }
         .sheet(item: $selectedSong) { song in
             SongSheetContainer(song: song)
                 .environmentObject(player)
                 .environmentObject(favorites)
         }
+    }
+
+    // MARK: - 顶部
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("主页")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if settings.showTopLeftAvatar {
+                AvatarButton()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
     }
 
     private func load() async {
@@ -167,118 +194,90 @@ struct HomeView: View {
         let songs = (try? await newTask) ?? []
         let lists = (try? await listTask) ?? []
 
-        var daily: [Song] = []
+        var recent: [Song] = []
         if let topLists = try? await NetEaseAPI.shared.topLists(), let first = topLists.first {
-            daily = (try? await NetEaseAPI.shared.playlistTracks(id: first.id)) ?? []
+            recent = (try? await NetEaseAPI.shared.playlistTracks(id: first.id)) ?? []
         }
-        if daily.isEmpty { daily = songs }
+        if recent.isEmpty { recent = songs }
 
         await MainActor.run {
             newSongs = songs
-            rankPlaylists = lists
-            dailySongs = Array(daily.prefix(60))
+            playlists = lists
+            recentlyPlayed = Array(recent.prefix(20))
             if songs.isEmpty && lists.isEmpty { errorText = "接口暂时不可用" }
             isLoading = false
         }
     }
 }
 
-// MARK: - 大卡入口
+// MARK: - 圆形头像按钮
 
-struct BigEntryCard: View {
+struct AvatarButton: View {
+    @EnvironmentObject private var settings: AppSettings
+    @State private var showTip = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            showTip = true
+        } label: {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [settings.accent.color, settings.accent.color.opacity(0.65)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 34, height: 34)
+                .overlay {
+                    Text("K")
+                        .font(.system(size: 17, weight: .heavy))
+                        .foregroundStyle(.white)
+                }
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.92))
+        .alert("账号", isPresented: $showTip) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("在「我的 → 设置 → 账号与平台」里登录各平台账号。")
+        }
+    }
+}
+
+// MARK: - 大媒体卡（最近播放 / 开始聆听）
+
+struct LargeMediaCard: View {
     let title: String
     let subtitle: String
     let coverURL: URL?
-    let accent: Color
+    var width: CGFloat = 300
 
     var body: some View {
-        HStack(spacing: 14) {
-            CoverArtView(url: coverURL, size: 64, cornerRadius: 8)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 30))
-                .foregroundStyle(accent)
-        }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        }
-    }
-}
-
-/// 私人漫游：蓝色渐变大卡
-struct RoamCard: View {
-    var body: some View {
-        ZStack(alignment: .leading) {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.16, green: 0.42, blue: 0.92),
-                    Color(red: 0.30, green: 0.24, blue: 0.82)
-                ],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("私人漫游")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text("为你随机播放，发现更多好音乐")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "infinity")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-            }
-            .padding(16)
-        }
-        .frame(height: 92)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-// MARK: - 歌单卡片
-
-struct PlaylistCard: View {
-    let playlist: Playlist
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CoverArtView(url: playlist.coverURL, size: 150, cornerRadius: 10)
+        VStack(alignment: .leading, spacing: 0) {
+            CoverArtView(url: coverURL, size: width, cornerRadius: 10)
+                .frame(width: width, height: width * 0.62)
+                .clipped()
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(playlist.name)
-                    .font(.system(size: 14, weight: .medium))
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .frame(width: 150, alignment: .leading)
-
-                if playlist.trackCount > 0 {
-                    Text("\(playlist.trackCount) 首")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                } else if !playlist.creatorName.isEmpty {
-                    Text(playlist.creatorName)
-                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    .lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(width: width, alignment: .leading)
         }
-        .frame(width: 150)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

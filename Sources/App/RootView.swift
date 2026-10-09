@@ -2,10 +2,14 @@
 //  RootView.swift
 //  AppleMusic
 //
-//  根视图：页面 + 悬浮底栏 + 迷你播放条 + 全屏播放页。
+//  根视图。
 //
-//  底栏显示哪些项目由 AppSettings.activeTabs 决定；
-//  当用户关闭某个 Tab 时，当前选中项会自动回退到第一个可用项。
+//  与参考图一致的层次：
+//    页面内容（可滚动）
+//    迷你播放条（贴底栏上方，深灰胶囊）
+//    底部导航栏（默认贴底 5 项）
+//
+//  底栏显示哪些项目、是否悬浮、是否显示文字，均由 AppSettings 控制。
 //
 
 import SwiftUI
@@ -33,12 +37,14 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 0) {
                 if settings.showMiniPlayer, player.currentSong != nil {
                     MiniPlayerBar(showNowPlaying: $showNowPlaying)
                         .padding(.horizontal, settings.floatingTabBar ? 12 : 8)
+                        .padding(.bottom, settings.floatingTabBar ? 8 : 6)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+
                 FloatingTabBar(
                     selection: $selection,
                     miniPlayerVisible: settings.showMiniPlayer && player.currentSong != nil
